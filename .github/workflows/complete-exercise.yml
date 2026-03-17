@@ -1,0 +1,75 @@
+name: Complete Exercise
+
+on:
+  push:
+    branches:
+      - copilot/exercise-introduction-to-github
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  complete-exercise:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout my-first-branch
+        uses: actions/checkout@v4
+        with:
+          ref: my-first-branch
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create PROFILE.md if it does not exist
+        run: |
+          if [ ! -f PROFILE.md ]; then
+            echo "Welcome to my GitHub profile!" > PROFILE.md
+            git add PROFILE.md
+            git commit -m "Add PROFILE.md"
+            git push origin my-first-branch
+            echo "PROFILE_MD_PUSHED=true" >> $GITHUB_ENV
+          else
+            echo "PROFILE.md already exists"
+            echo "PROFILE_MD_PUSHED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Wait for Step 2 workflow to process
+        if: env.PROFILE_MD_PUSHED == 'true'
+        run: sleep 30
+
+      - name: Create pull request
+        id: create-pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING_PR=$(gh pr list --base main --head my-first-branch --json number --jq '.[0].number // empty')
+          if [ -z "$EXISTING_PR" ]; then
+            gh pr create \
+              --base main \
+              --head my-first-branch \
+              --title "Add my first file" \
+              --body "Adding my first file PROFILE.md to the repository as part of the Introduction to GitHub exercise."
+            echo "PR_CREATED=true" >> $GITHUB_ENV
+          else
+            echo "PR already exists: #$EXISTING_PR"
+            echo "PR_CREATED=false" >> $GITHUB_ENV
+          fi
+
+      - name: Wait for Step 3 workflow to process
+        run: sleep 60
+
+      - name: Merge pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list --base main --head my-first-branch --json number --jq '.[0].number // empty')
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr merge "$PR_NUMBER" --merge --delete-branch
+          else
+            echo "No open PR found to merge"
+          fi
