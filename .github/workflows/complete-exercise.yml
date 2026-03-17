@@ -9,7 +9,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: read
+  actions: write
 
 jobs:
   complete-exercise:
@@ -33,23 +33,25 @@ jobs:
             git add PROFILE.md
             git commit -m "Add PROFILE.md"
             git push origin my-first-branch
-            echo "PROFILE_MD_PUSHED=true" >> $GITHUB_ENV
           else
             echo "PROFILE.md already exists"
-            echo "PROFILE_MD_PUSHED=false" >> $GITHUB_ENV
           fi
 
-      - name: Wait for Step 3 workflow to be enabled
+      - name: Wait for Step 3 to be enabled (triggered by Step 2)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Waiting for Step 2 to process and enable Step 3..."
-          for i in $(seq 1 20); do
+          for i in $(seq 1 12); do
             STATE=$(gh workflow view "Step 3" --json state --jq '.state' 2>/dev/null || echo "unknown")
-            echo "Attempt $i: Step 3 workflow state = $STATE"
+            echo "Attempt $i/12: Step 3 state = $STATE"
             if [ "$STATE" = "active" ]; then
-              echo "Step 3 is now enabled. Proceeding."
+              echo "Step 3 is now enabled."
               break
+            fi
+            if [ "$i" -eq 12 ]; then
+              echo "Step 2 did not enable Step 3 automatically. Enabling Step 3 directly..."
+              gh workflow enable "Step 3" || true
             fi
             sleep 30
           done
@@ -68,22 +70,27 @@ jobs:
               --body "Adding my first file PROFILE.md to the repository as part of the Introduction to GitHub exercise.")
             PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
             echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+            echo "Created PR #$PR_NUMBER"
           else
             echo "PR already exists: #$EXISTING_PR"
             echo "pr_number=$EXISTING_PR" >> $GITHUB_OUTPUT
           fi
 
-      - name: Wait for Step 4 workflow to be enabled
+      - name: Wait for Step 4 to be enabled (triggered by Step 3)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Waiting for Step 3 to process and enable Step 4..."
-          for i in $(seq 1 20); do
+          for i in $(seq 1 12); do
             STATE=$(gh workflow view "Step 4" --json state --jq '.state' 2>/dev/null || echo "unknown")
-            echo "Attempt $i: Step 4 workflow state = $STATE"
+            echo "Attempt $i/12: Step 4 state = $STATE"
             if [ "$STATE" = "active" ]; then
-              echo "Step 4 is now enabled. Proceeding."
+              echo "Step 4 is now enabled."
               break
+            fi
+            if [ "$i" -eq 12 ]; then
+              echo "Step 3 did not enable Step 4 automatically. Enabling Step 4 directly..."
+              gh workflow enable "Step 4" || true
             fi
             sleep 30
           done
