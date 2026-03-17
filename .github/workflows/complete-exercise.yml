@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: read
 
 jobs:
   complete-exercise:
@@ -38,11 +39,20 @@ jobs:
             echo "PROFILE_MD_PUSHED=false" >> $GITHUB_ENV
           fi
 
-      - name: Wait for Step 2 workflow to process
-        if: env.PROFILE_MD_PUSHED == 'true'
+      - name: Wait for Step 3 workflow to be enabled
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Waiting for Step 2 workflow to finish processing..."
-          sleep 90
+          echo "Waiting for Step 2 to process and enable Step 3..."
+          for i in $(seq 1 20); do
+            STATE=$(gh workflow view "Step 3" --json state --jq '.state' 2>/dev/null || echo "unknown")
+            echo "Attempt $i: Step 3 workflow state = $STATE"
+            if [ "$STATE" = "active" ]; then
+              echo "Step 3 is now enabled. Proceeding."
+              break
+            fi
+            sleep 30
+          done
 
       - name: Create pull request
         id: create-pr
@@ -51,30 +61,42 @@ jobs:
         run: |
           EXISTING_PR=$(gh pr list --base main --head my-first-branch --json number --jq '.[0].number // empty')
           if [ -z "$EXISTING_PR" ]; then
-            gh pr create \
+            PR_URL=$(gh pr create \
               --base main \
               --head my-first-branch \
               --title "Add my first file" \
-              --body "Adding my first file PROFILE.md to the repository as part of the Introduction to GitHub exercise."
-            echo "PR_CREATED=true" >> $GITHUB_ENV
+              --body "Adding my first file PROFILE.md to the repository as part of the Introduction to GitHub exercise.")
+            PR_NUMBER=$(echo "$PR_URL" | grep -oE '[0-9]+$')
+            echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
           else
             echo "PR already exists: #$EXISTING_PR"
-            echo "PR_CREATED=false" >> $GITHUB_ENV
+            echo "pr_number=$EXISTING_PR" >> $GITHUB_OUTPUT
           fi
 
-      - name: Wait for Step 3 workflow to process
+      - name: Wait for Step 4 workflow to be enabled
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Waiting for Step 3 workflow to finish processing..."
-          sleep 120
+          echo "Waiting for Step 3 to process and enable Step 4..."
+          for i in $(seq 1 20); do
+            STATE=$(gh workflow view "Step 4" --json state --jq '.state' 2>/dev/null || echo "unknown")
+            echo "Attempt $i: Step 4 workflow state = $STATE"
+            if [ "$STATE" = "active" ]; then
+              echo "Step 4 is now enabled. Proceeding."
+              break
+            fi
+            sleep 30
+          done
 
       - name: Merge pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.create-pr.outputs.pr_number }}
         run: |
-          PR_NUMBER=$(gh pr list --base main --head my-first-branch --json number --jq '.[0].number // empty')
           if [ -n "$PR_NUMBER" ]; then
             echo "Merging PR #$PR_NUMBER..."
             gh pr merge "$PR_NUMBER" --merge
           else
-            echo "No open PR found to merge"
+            echo "No PR number found to merge"
+            exit 1
           fi
